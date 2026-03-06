@@ -2,61 +2,39 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quest 3 Arena - Hand Tracking Fix</title>
-
+    <title>Quest 3 Hand-Tracking Arena</title>
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.2.0/dist/aframe-extras.min.js"></script>
-
     <script>
-        // Global State for Arena Logic
-        window.AppState = { hasTicket: false, hasWristband: false, securityCleared: false };
-
-        // --- IMPROVED HAND LOCOMOTION ---
-        AFRAME.registerComponent('hand-move', {
+        // --- LOCOMOTION ENGINE ---
+        AFRAME.registerComponent('pinch-move', {
             init: function () {
                 this.rig = document.querySelector('#rig');
                 this.camera = document.querySelector('#head');
-                this.isMoving = false;
-                this.speed = 0.08; // Adjusted for smooth Quest 3 feel
+                this.isPinching = false;
+                this.speed = 0.1;
 
-                // Listen for pinch on the hand this component is attached to
-                this.el.addEventListener('pinchstarted', () => { this.isMoving = true; });
-                this.el.addEventListener('pinchended', () => { this.isMoving = false; });
+                // Native WebXR Hand Events
+                this.el.addEventListener('pinchstarted', () => { this.isPinching = true; });
+                this.el.addEventListener('pinchended', () => { this.isPinching = false; });
             },
             tick: function () {
-                if (this.isMoving) {
-                    const direction = new THREE.Vector3();
-                    // Get direction from camera view
-                    this.camera.object3D.getWorldDirection(direction);
-                    direction.y = 0; // Lock to floor
-                    direction.reverse(); // A-Frame cameras look down -Z, so we reverse for +Z forward
-                    
-                    const movement = direction.multiplyScalar(this.speed);
-                    this.rig.object3D.position.add(movement);
+                if (this.isPinching) {
+                    const dir = new THREE.Vector3();
+                    this.camera.object3D.getWorldDirection(dir);
+                    dir.y = 0; // Maintain terrestrial constraints
+                    dir.reverse(); // Standardize forward vector
+                    this.rig.object3D.position.add(dir.multiplyScalar(this.speed));
                 }
             }
         });
 
-        // --- INTERACTION LOGIC ---
-        AFRAME.registerComponent('arena-interaction', {
-            init: function() {
-                this.el.addEventListener('click', (e) => {
-                    const id = e.target.id;
-                    if (id === 'kiosk-btn' && !AppState.hasTicket) {
-                        AppState.hasTicket = true;
-                        e.target.setAttribute('color', '#00ff00');
-                        console.log("Ticket Acquired");
-                    }
-                    if (id === 'wristband-btn' && AppState.hasTicket) {
-                        AppState.hasWristband = true;
-                        e.target.setAttribute('color', '#00ff00');
-                        document.querySelector('#wristband-visual').setAttribute('visible', 'true');
-                    }
-                    if (id === 'gate-btn' && AppState.hasWristband) {
-                        AppState.securityCleared = true;
-                        document.querySelector('#security-indicator').setAttribute('color', '#00ff00');
-                        document.querySelector('#security-gate').setAttribute('animation', 'property: position; to: 2 1.5 0; dur: 1000');
+        // --- INTERACTION ENGINE ---
+        AFRAME.registerComponent('pinch-select', {
+            init: function () {
+                this.el.addEventListener('pinchstarted', () => {
+                    const ray = this.el.components.raycaster;
+                    if (ray && ray.intersectedEls.length > 0) {
+                        ray.intersectedEls[0].emit('click');
                     }
                 });
             }
@@ -64,71 +42,34 @@
     </script>
 </head>
 <body>
-
-    <a-scene arena-interaction webxr="optionalFeatures: hand-tracking, local-floor">
+    <a-scene webxr="optionalFeatures: hand-tracking, local-floor; referenceSpaceType: local-floor">
         
-        <a-assets>
-            <a-mixin id="hand-logic" 
-                     hand-tracking-controls 
-                     hand-move 
-                     raycaster="objects: .clickable; far: 4; showLine: true" 
-                     cursor="rayOrigin: entity; fuse: false"></a-mixin>
-        </a-assets>
-
-        <a-entity id="rig" position="0 0 18">
+        <a-entity id="rig" position="0 0 15">
             <a-camera id="head" position="0 1.6 0"></a-camera>
-
-            <a-entity id="left-hand" mixin="hand-logic" hand-tracking-controls="hand: left">
-                <a-text value="Pinch to Walk" position="0 0.1 0" rotation="-90 0 0" width="1" align="center"></a-text>
+            
+            <a-entity id="leftHand" hand-tracking-controls="hand: left" pinch-move>
+                <a-sphere radius="0.02" color="red" position="0 0.05 0"></a-sphere> 
             </a-entity>
 
-            <a-entity id="right-hand" mixin="hand-logic" hand-tracking-controls="hand: right">
-                <a-torus id="wristband-visual" visible="false" radius="0.04" radius-tubular="0.01" color="#00ffff" position="0 0 0.05"></a-torus>
-            </a-entity>
-        </a-entity>
-
-        <a-plane position="0 0 -5" rotation="-90 0 0" width="50" height="50" color="#1a1a1a"></a-plane>
-
-        <a-entity id="main-entrance" position="0 0 12">
-            <a-torus radius="4" radius-tubular="0.4" color="#ff3300" material="emissive: #ff1100"></a-torus>
-            <a-text value="WELCOME TO THE ARENA" position="0 5.5 0" align="center" width="10" color="#fff"></a-text>
-        </a-entity>
-
-        <a-entity position="-3 0 10" rotation="0 45 0">
-            <a-box position="0 0.75 0" width="0.8" height="1.5" depth="0.5" color="#333"></a-box>
-            <a-plane id="kiosk-btn" class="clickable" position="0 1.2 0.26" width="0.6" height="0.4" color="#222">
-                <a-text value="GET TICKET" align="center" position="0 0 0.01" width="3" color="#fff"></a-text>
-            </a-plane>
-        </a-entity>
-
-        <a-entity position="3 0 8" rotation="0 -45 0">
-            <a-cylinder position="0 0.5 0" radius="0.5" height="1" color="#224"></a-cylinder>
-            <a-cylinder id="wristband-btn" class="clickable" position="0 1.05 0" radius="0.4" height="0.1" color="#448">
-                <a-text value="GET WRISTBAND" align="center" position="0 0.1 0" rotation="-90 0 0" width="2" color="#fff"></a-text>
-            </a-cylinder>
-        </a-entity>
-
-        <a-entity position="0 0 5">
-            <a-box position="-4 1 0" width="6" height="2" depth="0.2" color="#111"></a-box>
-            <a-box position="4 1 0" width="6" height="2" depth="0.2" color="#111"></a-box>
-            <a-entity position="-0.5 0 0">
-                <a-box id="security-gate" position="0.5 1.5 0" width="1" height="3" depth="0.1" color="#444" opacity="0.8"></a-box>
-                <a-sphere id="gate-btn" class="clickable" position="0.5 2 0.1" radius="0.15" color="#444"></a-sphere>
-                <a-sphere id="security-indicator" position="0.5 3.2 0" radius="0.2" color="#ffff00"></a-sphere>
+            <a-entity id="rightHand" hand-tracking-controls="hand: right" pinch-select raycaster="objects: .clickable; far: 3; showLine: true">
+                <a-sphere radius="0.02" color="blue" position="0 0.05 0"></a-sphere>
             </a-entity>
         </a-entity>
 
-        <a-entity id="stage" position="0 0 -15">
-            <a-cylinder position="0 0.5 0" radius="6" height="1" color="#111"></a-cylinder>
-            <a-entity animation="property: rotation; to: 0 0 360; loop: true; dur: 20000; easing: linear">
-                <a-torus radius="5" radius-tubular="0.2" position="0 3 -2" rotation="45 0 0" color="#ff0055" material="emissive: #ff0055"></a-torus>
-                <a-torus radius="6" radius-tubular="0.15" position="0 3 -3" rotation="-45 0 0" color="#00ffcc" material="emissive: #00ffcc"></a-torus>
-            </a-entity>
+        <a-plane position="0 0 0" rotation="-90 0 0" width="50" height="50" color="#111"></a-plane>
+
+        <a-entity id="entrance" position="0 0 5">
+            <a-torus radius="4" radius-tubular="0.2" color="#ff4500"></a-torus>
+            <a-text value="CONCERT ARENA" position="0 5 0" align="center" width="10"></a-text>
         </a-entity>
 
-        <a-light type="ambient" color="#222"></a-light>
-        <a-light type="point" position="0 8 -10" color="#ff5500" intensity="2"></a-light>
+        <a-box id="kiosk" class="clickable" position="-3 0.75 8" width="1" height="1.5" depth="0.5" color="#333"
+               onclick="this.setAttribute('color', 'green')">
+            <a-text value="PINCH TO ACTIVATE" position="0 1 0.3" align="center" width="2"></a-text>
+        </a-box>
 
+        <a-light type="ambient" intensity="0.3"></a-light>
+        <a-light type="point" position="0 5 -5" color="orange" intensity="2"></a-light>
     </a-scene>
 </body>
 </html>
